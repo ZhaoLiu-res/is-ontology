@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<title>IS Ontology Explorer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,700&family=Space+Mono:wght@400;700&display=swap');
+
+  :root {
+    --bg-deep: #0a0e1a;
+    --bg-mid: #111827;
+    --bg-card: #1a2035;
+    --bg-card-solid: #1e2640;
+    --text-primary: #e8ecf4;
+    --text-secondary: #8892a8;
+    --text-muted: #4a5568;
+    --accent-cyan: #22d3ee;
+    --accent-emerald: #34d399;
+    --accent-violet: #a78bfa;
+    --accent-amber: #fbbf24;
+    --accent-rose: #fb7185;
+    --accent-blue: #60a5fa;
+    --accent-teal: #2dd4bf;
+    --accent-orange: #fb923c;
+    --border: rgba(255,255,255,0.06);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100%;
+    width: 100%;
+    position: fixed;
+    touch-action: none;
+  }
+
+  #canvas-container {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+  }
+
+  svg { width: 100%; height: 100%; touch-action: none; }
+
+  /* ── Grain ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    pointer-events: none;
+  }
+
+  /* ── Header ── */
+  .header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 100;
+    padding: calc(var(--safe-top) + 10px) 16px 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(180deg, var(--bg-deep) 50%, transparent);
+    pointer-events: none;
+  }
+  .header > * { pointer-events: auto; }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .logo-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent-cyan), var(--accent-violet));
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Mono', monospace;
+    font-weight: 700; font-size: 13px;
+    color: var(--bg-deep);
+    flex-shrink: 0;
+  }
+
+  .logo-text {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px; font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+
+  .logo-sub {
+    font-size: 10px; font-weight: 400;
+    color: var(--text-secondary);
+    letter-spacing: 0;
+    margin-top: 1px;
+    font-family: 'DM Sans', sans-serif;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  .btn-icon {
+    width: 36px; height: 36px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-radius: 10px;
+    font-size: 16px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    -webkit-appearance: none;
+    transition: all 0.2s;
+  }
+  .btn-icon:active { background: rgba(255,255,255,0.12); transform: scale(0.92); }
+
+  /* ── Search ── */
+  .search-container {
+    position: fixed;
+    top: calc(var(--safe-top) + 56px);
+    left: 12px; right: 12px;
+    z-index: 100;
+    pointer-events: none;
+  }
+
+  .search-box {
+    width: 100%;
+    background: var(--bg-card-solid);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 14px;
+    color: var(--text-primary);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    outline: none;
+    pointer-events: auto;
+    -webkit-appearance: none;
+  }
+  .search-box::placeholder { color: var(--text-muted); }
+  .search-box:focus {
+    border-color: rgba(34, 211, 238, 0.3);
+    box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.08);
+  }
+
+  /* ── Legend (horizontal scroll) ── */
+  .legend {
+    position: fixed;
+    bottom: calc(var(--safe-bottom) + 12px);
+    left: 0; right: 0;
+    z-index: 90;
+    display: flex;
+    gap: 12px;
+    padding: 0 14px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    pointer-events: auto;
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  .legend::-webkit-scrollbar { display: none; }
+  .legend.hidden { opacity: 0; transform: translateY(20px); pointer-events: none; }
+
+  .legend-item {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 10px; color: var(--text-secondary);
+    white-space: nowrap; flex-shrink: 0;
+  }
+
+  .legend-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+
+  /* ── Bottom Sheet Info Panel ── */
+  .bottom-sheet-overlay {
+    position: fixed; inset: 0;
+    z-index: 199;
+    background: rgba(0,0,0,0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+  .bottom-sheet-overlay.visible { opacity: 1; pointer-events: auto; }
+
+  .bottom-sheet {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 200;
+    background: var(--bg-card-solid);
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+    max-height: 70vh;
+    transform: translateY(100%);
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+    padding-bottom: var(--safe-bottom);
+  }
+  .bottom-sheet.visible { transform: translateY(0); }
+
+  .sheet-handle {
+    width: 36px; height: 4px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 2px;
+    margin: 10px auto 6px;
+    flex-shrink: 0;
+  }
+
+  .sheet-header {
+    padding: 4px 20px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .sheet-category {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px; letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .sheet-title {
+    font-size: 18px; font-weight: 700; line-height: 1.3;
+  }
+
+  .sheet-body {
+    padding: 16px 20px 20px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    flex: 1;
+  }
+
+  .sheet-desc {
+    font-size: 13px; line-height: 1.7;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+  }
+
+  .sheet-section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px; letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    margin-top: 12px;
+  }
+
+  .sheet-rel-list {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+
+  .sheet-rel-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .sheet-rel-item:active { background: rgba(255,255,255,0.08); }
+
+  .sheet-rel-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+
+  .sheet-rel-name { flex: 1; }
+
+  .sheet-rel-type {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px; color: var(--text-muted);
+    letter-spacing: 0.5px; flex-shrink: 0;
+  }
+
+  /* ── Tap hint (first time) ── */
+  .tap-hint {
+    position: fixed;
+    bottom: calc(var(--safe-bottom) + 44px);
+    left: 50%; transform: translateX(-50%);
+    z-index: 95;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: 'Space Mono', monospace;
+    text-align: center;
+    pointer-events: none;
+    animation: fadeHint 4s ease-in-out forwards;
+  }
+  @keyframes fadeHint {
+    0% { opacity: 0; }
+    15% { opacity: 1; }
+    75% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  /* ── Pulse animation on expandable nodes ── */
+  @keyframes pulseRing {
+    0% { opacity: 0.3; }
+    50% { opacity: 0.7; }
+    100% { opacity: 0.3; }
+  }
+
+  /* ── Desktop sidebar (media query) ── */
+  @media (min-width: 768px) {
+    .bottom-sheet-overlay { display: none !important; }
+    .bottom-sheet {
+      position: fixed;
+      right: 20px; top: 80px; bottom: auto; left: auto;
+      width: 360px;
+      max-height: calc(100vh - 120px);
+      border-radius: 16px;
+      transform: translateX(20px);
+      opacity: 0;
+      pointer-events: none;
+      padding-bottom: 0;
+    }
+    .bottom-sheet.visible {
+      transform: translateX(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .sheet-handle { display: none; }
+
+    .header {
+      padding: calc(var(--safe-top) + 16px) 24px 12px;
+    }
+
+    .search-container {
+      top: calc(var(--safe-top) + 64px);
+      left: 20px;
+      right: auto;
+      width: 260px;
+    }
+
+    .legend {
+      bottom: 20px;
+      padding: 0 24px;
+    }
+  }
+
+  /* Scrollbar for sheet body */
+  .sheet-body::-webkit-scrollbar { width: 3px; }
+  .sheet-body::-webkit-scrollbar-track { background: transparent; }
+  .sheet-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">IS</div>
+    <div>
+      <div class="logo-text">Ontology Explorer</div>
+      <div class="logo-sub">Implementation Science</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="btn-icon" onclick="resetView()" aria-label="Reset">↺</button>
+    <button class="btn-icon" onclick="expandAll()" aria-label="Expand all">◎</button>
+  </div>
+</div>
+
+<!-- Search -->
+<div class="search-container">
+  <input type="text" class="search-box" placeholder="Search concepts..." oninput="searchNodes(this.value)" id="searchInput">
+</div>
+
+<!-- Canvas -->
+<div id="canvas-container"></div>
+
+<!-- Legend -->
+<div class="legend" id="legend"></div>
+
+<!-- Tap hint -->
+<div class="tap-hint" id="tapHint">tap a node to explore →</div>
+
+<!-- Bottom Sheet Overlay -->
+<div class="bottom-sheet-overlay" id="sheetOverlay" onclick="closeSheet()"></div>
+
+<!-- Bottom Sheet -->
+<div class="bottom-sheet" id="bottomSheet">
+  <div class="sheet-handle"></div>
+  <div class="sheet-header" id="sheetHeader"></div>
+  <div class="sheet-body" id="sheetBody"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// ONTOLOGY DATA
+// ═══════════════════════════════════════════════════════════════
+
+const CATEGORIES = {
+  core:        { label: 'Core Concepts',             color: '#22d3ee' },
+  framework:   { label: 'Frameworks & Models',       color: '#a78bfa' },
+  outcome:     { label: 'Implementation Outcomes',   color: '#34d399' },
+  strategy:    { label: 'Implementation Strategies', color: '#fbbf24' },
+  determinant: { label: 'Determinants',              color: '#fb7185' },
+  method:      { label: 'Research Methods',          color: '#60a5fa' },
+  stakeholder: { label: 'Stakeholders & Context',    color: '#2dd4bf' },
+  process:     { label: 'Processes',                 color: '#fb923c' },
+};
+
+const ONTOLOGY = {
+  'Implementation Science': {
+    cat: 'core',
+    desc: 'The scientific study of methods to promote the systematic uptake of evidence-based practices, interventions, and policies into routine practice to improve health and wellbeing.',
+    children: ['EBP', 'Frameworks', 'Outcomes', 'Strategies', 'Determinants', 'Research Methods', 'Stakeholders', 'Implementation Process'],
+  },
+  'EBP': {
+    cat: 'core', label: 'Evidence-Based Practice',
+    desc: 'Clinical practices, interventions, or policies established through rigorous research to improve patient outcomes.',
+    children: ['Clinical Guidelines', 'Intervention Protocols', 'Best Practices', 'Innovation Attributes'],
+  },
+  'Clinical Guidelines': { cat: 'core', desc: 'Systematically developed statements to assist practitioner decisions about appropriate health care.' },
+  'Intervention Protocols': { cat: 'core', desc: 'Detailed procedural documents specifying exactly how an evidence-based intervention should be delivered.' },
+  'Best Practices': { cat: 'core', desc: 'Methods or techniques that have consistently shown superior results compared to alternatives.' },
+  'Innovation Attributes': {
+    cat: 'core',
+    desc: 'Characteristics of the innovation that influence its adoption rate (Rogers\' diffusion theory).',
+    children: ['Relative Advantage', 'Compatibility', 'Complexity', 'Trialability', 'Observability'],
+  },
+  'Relative Advantage': { cat: 'core', desc: 'The degree to which an innovation is perceived as better than the idea it supersedes.' },
+  'Compatibility': { cat: 'core', desc: 'The degree to which an innovation is perceived as consistent with existing values and needs.' },
+  'Complexity': { cat: 'core', desc: 'The degree to which an innovation is perceived as relatively difficult to understand and use.' },
+  'Trialability': { cat: 'core', desc: 'The degree to which an innovation may be experimented with on a limited basis.' },
+  'Observability': { cat: 'core', desc: 'The degree to which the results of an innovation are visible to others.' },
+
+  'Frameworks': {
+    cat: 'framework', label: 'Frameworks & Models',
+    desc: 'Theoretical and conceptual frameworks that guide the understanding and study of implementation processes.',
+    children: ['CFIR', 'RE-AIM', 'Proctor Model', 'Diffusion of Innovations', 'Knowledge-to-Action', 'COM-B', 'EPIS', 'TDF'],
+  },
+  'CFIR': {
+    cat: 'framework',
+    desc: 'Consolidated Framework for Implementation Research — a meta-theoretical framework composed of 5 domains and 39 constructs.',
+    children: ['CFIR Intervention', 'CFIR Outer Setting', 'CFIR Inner Setting', 'CFIR Individuals', 'CFIR Process'],
+  },
+  'CFIR Intervention': { cat: 'framework', label: 'Intervention Chars.', desc: 'Attributes of the intervention: evidence strength, adaptability, complexity, cost.' },
+  'CFIR Outer Setting': { cat: 'framework', label: 'Outer Setting', desc: 'Economic, political, and social context within which an organization resides.' },
+  'CFIR Inner Setting': { cat: 'framework', label: 'Inner Setting', desc: 'Features of the implementing organization: culture, climate, readiness, structure.' },
+  'CFIR Individuals': { cat: 'framework', label: 'Individuals', desc: 'Individual-level attributes: knowledge, self-efficacy, personal attributes.' },
+  'CFIR Process': { cat: 'framework', label: 'Process (CFIR)', desc: 'Planning, engaging, executing, and reflecting on implementation.' },
+
+  'RE-AIM': {
+    cat: 'framework',
+    desc: 'A framework evaluating 5 dimensions: Reach, Effectiveness, Adoption, Implementation, Maintenance.',
+    children: ['Reach', 'Effectiveness', 'Adoption', 'RE-AIM Impl', 'Maintenance'],
+  },
+  'Reach': { cat: 'outcome', desc: 'The proportion and representativeness of the target population participating in the intervention.' },
+  'Effectiveness': { cat: 'outcome', desc: 'The impact of the intervention on important outcomes, including potential negative effects.' },
+  'Adoption': { cat: 'outcome', desc: 'The proportion and representativeness of settings willing to adopt the program.' },
+  'RE-AIM Impl': { cat: 'process', label: 'Implementation (RE-AIM)', desc: 'The extent to which the intervention is delivered as intended — fidelity, consistency, cost.' },
+  'Maintenance': { cat: 'outcome', desc: 'The extent to which the intervention becomes institutionalized.' },
+
+  'Proctor Model': {
+    cat: 'framework',
+    desc: 'A taxonomy distinguishing implementation outcomes, service outcomes, and client outcomes.',
+    children: ['Impl Outcomes Tax.', 'Service Outcomes', 'Client Outcomes'],
+  },
+  'Impl Outcomes Tax.': { cat: 'outcome', label: 'Impl. Outcomes', desc: 'Acceptability, adoption, appropriateness, costs, feasibility, fidelity, penetration, sustainability.' },
+  'Service Outcomes': { cat: 'outcome', desc: 'Efficiency, safety, effectiveness, equity, patient-centeredness, timeliness.' },
+  'Client Outcomes': { cat: 'outcome', desc: 'Satisfaction, function, symptom reduction, and health status outcomes.' },
+
+  'Diffusion of Innovations': {
+    cat: 'framework',
+    desc: 'Rogers\' theory explaining how innovations spread through social systems over time.',
+    children: ['Innovators', 'Early Adopters', 'Early Majority', 'Late Majority', 'Laggards'],
+  },
+  'Innovators': { cat: 'stakeholder', desc: 'First 2.5% to adopt — risk-takers with high social capital.' },
+  'Early Adopters': { cat: 'stakeholder', desc: 'Next 13.5% — opinion leaders triggering critical mass.' },
+  'Early Majority': { cat: 'stakeholder', desc: '34% adopting before average — deliberate decision-makers.' },
+  'Late Majority': { cat: 'stakeholder', desc: '34% adopting after average — skeptical, peer-pressure driven.' },
+  'Laggards': { cat: 'stakeholder', desc: 'Final 16% — tradition-bound, longest decision period.' },
+
+  'Knowledge-to-Action': { cat: 'framework', label: 'Knowledge-to-Action', desc: 'KTA framework: knowledge creation and its application (action cycle) in practice.' },
+  'COM-B': { cat: 'framework', label: 'COM-B Model', desc: 'Capability, Opportunity, Motivation → Behavior. Hub of the Behaviour Change Wheel.' },
+  'EPIS': { cat: 'framework', label: 'EPIS Framework', desc: 'Exploration, Preparation, Implementation, Sustainment — four-phase process framework.' },
+  'TDF': { cat: 'framework', label: 'TDF', desc: 'Theoretical Domains Framework — 14 domains synthesizing behavior change theories.' },
+
+  'Outcomes': {
+    cat: 'outcome', label: 'Impl. Outcomes',
+    desc: 'The effects of deliberate actions to implement new treatments, practices, and services.',
+    children: ['Acceptability', 'Feasibility', 'Fidelity', 'Penetration', 'Sustainability', 'Appropriateness', 'Cost'],
+  },
+  'Acceptability': { cat: 'outcome', desc: 'Perception among stakeholders that an intervention is agreeable or satisfactory.' },
+  'Feasibility': { cat: 'outcome', desc: 'Extent to which an intervention can be carried out within a given setting.' },
+  'Fidelity': {
+    cat: 'outcome',
+    desc: 'Degree to which an intervention is delivered as originally designed.',
+    children: ['Adherence', 'Dose', 'Quality of Delivery', 'Participant Response'],
+  },
+  'Adherence': { cat: 'outcome', desc: 'Whether an intervention is delivered as designed — following the protocol.' },
+  'Dose': { cat: 'outcome', desc: 'The amount or frequency of the intervention delivered.' },
+  'Quality of Delivery': { cat: 'outcome', desc: 'The manner in which the implementer delivers the intervention.' },
+  'Participant Response': { cat: 'outcome', label: 'Participant Response', desc: 'Degree to which participants are engaged by the intervention.' },
+  'Penetration': { cat: 'outcome', desc: 'Integration of a practice within a service setting — proportion of eligible receiving it.' },
+  'Sustainability': {
+    cat: 'outcome',
+    desc: 'Extent to which an EBP is maintained after initial implementation.',
+    children: ['Routinization', 'Institutionalization', 'De-implementation'],
+  },
+  'Routinization': { cat: 'process', desc: 'Innovation becoming embedded in routine organizational practice.' },
+  'Institutionalization': { cat: 'process', desc: 'Long-term integration as a standard expected part of the system.' },
+  'De-implementation': { cat: 'strategy', desc: 'Reducing or stopping use of low-value or harmful practices.' },
+  'Appropriateness': { cat: 'outcome', desc: 'Perceived fit, relevance, or compatibility of the intervention for the setting.' },
+  'Cost': { cat: 'outcome', desc: 'Total cost including investment, supply, and opportunity costs.' },
+
+  'Strategies': {
+    cat: 'strategy', label: 'Impl. Strategies',
+    desc: 'Systematic methods to enhance adoption, implementation, and sustainability of EBPs.',
+    children: ['Training & Education', 'Audit & Feedback', 'Facilitation', 'Academic Detailing', 'Learning Collabs.', 'Adaptation', 'Champions', 'Policy & Regulation'],
+  },
+  'Training & Education': { cat: 'strategy', desc: 'Structured educational activities to increase knowledge and skills.' },
+  'Audit & Feedback': { cat: 'strategy', desc: 'Systematic collection and delivery of performance data to improve practice.' },
+  'Facilitation': { cat: 'strategy', desc: 'Interactive problem-solving and support to help implement change.' },
+  'Academic Detailing': { cat: 'strategy', desc: 'Trained experts visiting practitioners to provide tailored education.' },
+  'Learning Collabs.': { cat: 'strategy', label: 'Learning Collaboratives', desc: 'Structured groups of organizations working together using shared learning.' },
+  'Adaptation': {
+    cat: 'strategy',
+    desc: 'Deliberate modification of an EBP to fit local context while preserving core components.',
+    children: ['Core Components', 'Peripheral Components', 'Cultural Adaptation'],
+  },
+  'Core Components': { cat: 'strategy', desc: 'Essential, indispensable elements responsible for effectiveness.' },
+  'Peripheral Components': { cat: 'strategy', desc: 'Adaptable elements that can be modified without undermining fidelity.' },
+  'Cultural Adaptation': { cat: 'strategy', desc: 'Systematic modification considering language, culture, and context.' },
+  'Champions': { cat: 'stakeholder', desc: 'Individuals dedicated to supporting and driving implementation.' },
+  'Policy & Regulation': { cat: 'strategy', desc: 'Policies and regulations that mandate or incentivize implementation.' },
+
+  'Determinants': {
+    cat: 'determinant',
+    desc: 'Factors acting as barriers to or facilitators of implementation success.',
+    children: ['Barriers', 'Facilitators', 'Readiness', 'Context'],
+  },
+  'Barriers': { cat: 'determinant', desc: 'Factors hindering implementation.', children: ['Resource Constraints', 'Resistance to Change', 'Knowledge Gaps'] },
+  'Resource Constraints': { cat: 'determinant', desc: 'Limitations in funding, staffing, time, or infrastructure.' },
+  'Resistance to Change': { cat: 'determinant', desc: 'Opposition to adopting new practices.' },
+  'Knowledge Gaps': { cat: 'determinant', desc: 'Insufficient awareness or understanding of the innovation.' },
+  'Facilitators': { cat: 'determinant', desc: 'Factors promoting successful implementation.', children: ['Leadership Support', 'Org. Culture', 'Available Resources'] },
+  'Leadership Support': { cat: 'determinant', desc: 'Active endorsement and resources from organizational leaders.' },
+  'Org. Culture': { cat: 'determinant', label: 'Org. Culture', desc: 'Shared norms, values, and assumptions influencing response to change.' },
+  'Available Resources': { cat: 'determinant', desc: 'Adequate funding, materials, technology, and staffing.' },
+  'Readiness': { cat: 'determinant', label: 'Org. Readiness', desc: 'Shared resolve to implement a change and shared belief in collective capability.' },
+  'Context': { cat: 'determinant', desc: 'Circumstances surrounding implementation at multiple ecological levels.' },
+
+  'Research Methods': {
+    cat: 'method',
+    desc: 'Methodological approaches to study implementation processes and outcomes.',
+    children: ['Hybrid Designs', 'Mixed Methods', 'Pragmatic Trials', 'PDSA Cycles', 'Qualitative Methods', 'Economic Evaluation'],
+  },
+  'Hybrid Designs': {
+    cat: 'method',
+    desc: 'Designs blending clinical effectiveness and implementation research.',
+    children: ['Type 1 Hybrid', 'Type 2 Hybrid', 'Type 3 Hybrid'],
+  },
+  'Type 1 Hybrid': { cat: 'method', desc: 'Primary: test effectiveness. Secondary: gather implementation data.' },
+  'Type 2 Hybrid': { cat: 'method', desc: 'Dual-testing clinical intervention and implementation strategy.' },
+  'Type 3 Hybrid': { cat: 'method', desc: 'Primary: test implementation strategy. Secondary: clinical outcomes.' },
+  'Mixed Methods': { cat: 'method', desc: 'Combining quantitative and qualitative approaches.' },
+  'Pragmatic Trials': { cat: 'method', desc: 'Trials designed for real-world routine practice conditions.' },
+  'PDSA Cycles': { cat: 'method', desc: 'Plan-Do-Study-Act iterative improvement cycles.' },
+  'Qualitative Methods': { cat: 'method', desc: 'Interviews, focus groups, ethnography, observations.' },
+  'Economic Evaluation': { cat: 'method', desc: 'Cost-effectiveness, cost-benefit, and cost-utility analyses.' },
+
+  'Stakeholders': {
+    cat: 'stakeholder', label: 'Stakeholders',
+    desc: 'Individuals, groups, and levels involved in or affected by implementation.',
+    children: ['Patients', 'Providers', 'Organizations', 'Policy Makers', 'Community', 'Impl. Teams'],
+  },
+  'Patients': { cat: 'stakeholder', desc: 'Individuals receiving care — their needs drive patient-centered implementation.' },
+  'Providers': { cat: 'stakeholder', desc: 'Healthcare professionals who deliver interventions.' },
+  'Organizations': { cat: 'stakeholder', desc: 'Hospitals, clinics, agencies providing structural context.' },
+  'Policy Makers': { cat: 'stakeholder', desc: 'Decision-makers creating conditions enabling or hindering implementation.' },
+  'Community': { cat: 'stakeholder', desc: 'Broader context including social determinants and cultural factors.' },
+  'Impl. Teams': { cat: 'stakeholder', label: 'Impl. Teams', desc: 'Dedicated groups assembled to lead and coordinate implementation.' },
+
+  'Implementation Process': {
+    cat: 'process', label: 'Impl. Process',
+    desc: 'Stages and activities involved in putting an EBP into action.',
+    children: ['Exploration Phase', 'Preparation Phase', 'Active Implementation', 'Sustainment Phase', 'Scaling'],
+  },
+  'Exploration Phase': { cat: 'process', desc: 'Assessing need, identifying the problem, selecting an EBP.' },
+  'Preparation Phase': { cat: 'process', desc: 'Building capacity, securing resources, adapting, planning.' },
+  'Active Implementation': { cat: 'process', desc: 'Executing the plan, providing training, monitoring progress.' },
+  'Sustainment Phase': { cat: 'process', desc: 'Maintaining the practice after initial support is withdrawn.' },
+  'Scaling': { cat: 'process', label: 'Scale-Up & Spread', desc: 'Expanding to new populations, settings, or contexts.', children: ['Horizontal Scaling', 'Vertical Scaling'] },
+  'Horizontal Scaling': { cat: 'process', desc: 'Replication to additional sites at the same organizational level.' },
+  'Vertical Scaling': { cat: 'process', desc: 'Institutionalization through policy or regulatory mechanisms.' },
+};
+
+const CROSS_LINKS = [
+  { source: 'Fidelity', target: 'Adaptation', type: 'tension', label: 'fidelity–adaptation' },
+  { source: 'CFIR', target: 'Determinants', type: 'informs', label: 'operationalizes' },
+  { source: 'COM-B', target: 'TDF', type: 'related', label: 'linked to' },
+  { source: 'Sustainability', target: 'Sustainment Phase', type: 'measured_in', label: 'measured in' },
+  { source: 'Champions', target: 'Facilitation', type: 'related', label: 'complementary' },
+  { source: 'RE-AIM', target: 'Outcomes', type: 'measures', label: 'evaluates' },
+  { source: 'Proctor Model', target: 'Outcomes', type: 'defines', label: 'taxonomy for' },
+  { source: 'Audit & Feedback', target: 'Fidelity', type: 'supports', label: 'monitors' },
+  { source: 'Context', target: 'CFIR Inner Setting', type: 'related', label: 'detailed in' },
+];
+
+// ═══════════════════════════════════════════════════════════════
+// GRAPH ENGINE
+// ═══════════════════════════════════════════════════════════════
+
+const isMobile = window.innerWidth < 768;
+let W = window.innerWidth;
+let H = window.innerHeight;
+
+let nodes = [];
+let links = [];
+let expandedNodes = new Set();
+let activeNode = null;
+
+const svg = d3.select('#canvas-container')
+  .append('svg')
+  .attr('viewBox', [0, 0, W, H]);
+
+const defs = svg.append('defs');
+
+// BG gradient
+const bgGrad = defs.append('radialGradient').attr('id', 'bgG').attr('cx','50%').attr('cy','50%').attr('r','60%');
+bgGrad.append('stop').attr('offset','0%').attr('stop-color','#111827');
+bgGrad.append('stop').attr('offset','100%').attr('stop-color','#0a0e1a');
+svg.append('rect').attr('width', W).attr('height', H).attr('fill','url(#bgG)');
+
+// Glow filters
+Object.entries(CATEGORIES).forEach(([key, val]) => {
+  const f = defs.append('filter').attr('id', `gl-${key}`).attr('x','-50%').attr('y','-50%').attr('width','200%').attr('height','200%');
+  f.append('feGaussianBlur').attr('in','SourceGraphic').attr('stdDeviation', isMobile ? '4' : '6').attr('result','b');
+  f.append('feFlood').attr('flood-color', val.color).attr('flood-opacity','0.35').attr('result','c');
+  f.append('feComposite').attr('in','c').attr('in2','b').attr('operator','in').attr('result','g');
+  const m = f.append('feMerge');
+  m.append('feMergeNode').attr('in','g');
+  m.append('feMergeNode').attr('in','SourceGraphic');
+});
+
+// Arrow
+defs.append('marker').attr('id','arr').attr('viewBox','0 -5 10 10')
+  .attr('refX', isMobile ? 32 : 38).attr('refY',0)
+  .attr('markerWidth',5).attr('markerHeight',5).attr('orient','auto')
+  .append('path').attr('d','M0,-4L10,0L0,4').attr('fill','rgba(255,255,255,0.12)');
+
+const g = svg.append('g');
+
+const zoom = d3.zoom()
+  .scaleExtent([0.15, 5])
+  .on('zoom', (e) => g.attr('transform', e.transform));
+svg.call(zoom);
+
+// Disable double-tap zoom on mobile
+svg.on('dblclick.zoom', null);
+
+let linkGroup = g.append('g');
+let linkLabelGroup = g.append('g');
+let nodeGroup = g.append('g');
+
+const chargeStrength = isMobile ? -250 : -400;
+const linkDist = isMobile ? 90 : 120;
+
+const simulation = d3.forceSimulation()
+  .force('link', d3.forceLink().id(d => d.id).distance(linkDist).strength(0.3))
+  .force('charge', d3.forceManyBody().strength(chargeStrength))
+  .force('center', d3.forceCenter(W / 2, H / 2))
+  .force('collision', d3.forceCollide().radius(isMobile ? 36 : 50))
+  .force('x', d3.forceX(W / 2).strength(0.02))
+  .force('y', d3.forceY(H / 2).strength(0.02));
+
+function getNodeRadius(node) {
+  const hasChildren = ONTOLOGY[node.id]?.children?.length > 0;
+  const base = isMobile ? 0.82 : 1;
+  if (node.depth === 0) return 34 * base;
+  if (hasChildren) return 26 * base;
+  return 19 * base;
+}
+
+function getNodeColor(n) { return CATEGORIES[n.cat]?.color || '#888'; }
+
+function hexToRgb(hex) {
+  return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)].join(',');
+}
+
+function getAbbrev(d) {
+  const name = d.label || d.id;
+  if (name.length <= 4) return name;
+  const words = name.split(/[\s\-\.]+/).filter(Boolean);
+  if (words.length >= 2) return words.map(w => w[0]).join('').toUpperCase().slice(0, 3);
+  return name.slice(0, 2).toUpperCase();
+}
+
+// ── Expand / Collapse ──
+function expandNode(nodeId) {
+  if (expandedNodes.has(nodeId)) return;
+  expandedNodes.add(nodeId);
+  const nd = ONTOLOGY[nodeId];
+  if (!nd?.children) return;
+  const parentNode = nodes.find(n => n.id === nodeId);
+  const depth = parentNode ? parentNode.depth + 1 : 1;
+
+  nd.children.forEach(cid => {
+    if (!nodes.find(n => n.id === cid)) {
+      const cd = ONTOLOGY[cid] || { cat: 'core', desc: '' };
+      nodes.push({
+        id: cid, ...cd, depth,
+        x: (parentNode?.x || W/2) + (Math.random()-0.5)*60,
+        y: (parentNode?.y || H/2) + (Math.random()-0.5)*60,
+      });
+    }
+    if (!links.find(l => (l.source?.id||l.source)===nodeId && (l.target?.id||l.target)===cid))
+      links.push({ source: nodeId, target: cid, type: 'subclass' });
+  });
+
+  CROSS_LINKS.forEach(cl => {
+    const s = nodes.find(n => n.id === cl.source);
+    const t = nodes.find(n => n.id === cl.target);
+    if (s && t && !links.find(l => (l.source?.id||l.source)===cl.source && (l.target?.id||l.target)===cl.target && l.type===cl.type))
+      links.push({ source: cl.source, target: cl.target, type: cl.type, label: cl.label });
+  });
+}
+
+function collapseNode(nodeId) {
+  if (!expandedNodes.has(nodeId)) return;
+  const toRemove = new Set();
+  function collect(id) {
+    const d = ONTOLOGY[id];
+    if (d?.children) d.children.forEach(c => { toRemove.add(c); expandedNodes.delete(c); collect(c); });
+  }
+  collect(nodeId);
+  expandedNodes.delete(nodeId);
+  nodes = nodes.filter(n => !toRemove.has(n.id));
+  links = links.filter(l => !toRemove.has(l.source?.id||l.source) && !toRemove.has(l.target?.id||l.target));
+}
+
+// ── Render ──
+function update() {
+  // Links
+  const lSel = linkGroup.selectAll('line').data(links, d => `${d.source?.id||d.source}-${d.target?.id||d.target}-${d.type}`);
+  lSel.exit().transition().duration(250).attr('opacity',0).remove();
+  lSel.enter().append('line')
+    .attr('stroke', d => d.type==='subclass' ? 'rgba(255,255,255,0.07)' : 'rgba(167,139,250,0.15)')
+    .attr('stroke-width', d => d.type==='subclass' ? 0.8 : 1.2)
+    .attr('stroke-dasharray', d => d.type==='subclass' ? 'none' : '3,3')
+    .attr('marker-end', d => d.type !== 'subclass' ? 'url(#arr)' : '')
+    .attr('opacity', 0).transition().duration(400).attr('opacity', 1);
+
+  // Link labels (desktop only)
+  if (!isMobile) {
+    const ll = linkLabelGroup.selectAll('text').data(links.filter(d => d.label), d => `${d.source?.id||d.source}-${d.target?.id||d.target}-l`);
+    ll.exit().remove();
+    ll.enter().append('text').attr('font-size',8).attr('fill','rgba(167,139,250,0.4)')
+      .attr('font-family','Space Mono, monospace').attr('text-anchor','middle').text(d => d.label);
+  }
+
+  // Nodes
+  const nSel = nodeGroup.selectAll('.ng').data(nodes, d => d.id);
+  nSel.exit().transition().duration(250).attr('opacity',0).remove();
+
+  const nEnter = nSel.enter().append('g').attr('class','ng')
+    .style('cursor','pointer').attr('opacity',0)
+    .call(d3.drag().on('start', ds).on('drag', dd).on('end', de))
+    .on('click', (e, d) => { e.stopPropagation(); handleNodeClick(d); })
+    .on('touchstart', function(e) { e.stopPropagation(); }, { passive: true });
+
+  // Expand ring
+  nEnter.append('circle').attr('class','nr')
+    .attr('r', d => getNodeRadius(d) + 3)
+    .attr('fill','none')
+    .attr('stroke', d => getNodeColor(d))
+    .attr('stroke-width', 1.2)
+    .attr('stroke-dasharray','3,2')
+    .attr('opacity', d => ONTOLOGY[d.id]?.children && !expandedNodes.has(d.id) ? 0.5 : 0)
+    .style('animation', d => ONTOLOGY[d.id]?.children && !expandedNodes.has(d.id) ? 'pulseRing 2s infinite' : 'none');
+
+  // Main circle
+  nEnter.append('circle').attr('class','nc')
+    .attr('r', d => getNodeRadius(d))
+    .attr('fill', d => `rgba(${hexToRgb(getNodeColor(d))}, 0.12)`)
+    .attr('stroke', d => getNodeColor(d))
+    .attr('stroke-width', isMobile ? 1.2 : 1.5)
+    .attr('filter', d => `url(#gl-${d.cat})`);
+
+  // Abbrev text
+  nEnter.append('text')
+    .attr('text-anchor','middle').attr('dy','0.35em')
+    .attr('fill', d => getNodeColor(d))
+    .attr('font-size', d => d.depth===0 ? (isMobile?12:14) : (isMobile?9:11))
+    .attr('font-family','Space Mono, monospace').attr('font-weight',700)
+    .text(d => getAbbrev(d));
+
+  // Label below
+  nEnter.each(function(d) {
+    const group = d3.select(this);
+    const name = d.label || d.id;
+    const words = name.split(/\s+/);
+    const fontSize = isMobile ? (d.depth===0 ? 10 : 9) : (d.depth===0 ? 12 : 10);
+    const yOff = getNodeRadius(d) + (isMobile ? 12 : 16);
+
+    if (words.length <= 2) {
+      group.append('text').attr('class','nl')
+        .attr('dy', yOff).attr('text-anchor','middle')
+        .attr('fill','var(--text-primary)')
+        .attr('font-size', fontSize).attr('font-weight', d.depth===0?700:400)
+        .attr('font-family','DM Sans, sans-serif')
+        .text(name);
+    } else {
+      const t = group.append('text').attr('class','nl')
+        .attr('text-anchor','middle')
+        .attr('fill','var(--text-primary)')
+        .attr('font-size', fontSize).attr('font-weight', d.depth===0?700:400)
+        .attr('font-family','DM Sans, sans-serif');
+      const mid = Math.ceil(words.length/2);
+      t.append('tspan').attr('x',0).attr('dy', yOff).text(words.slice(0,mid).join(' '));
+      t.append('tspan').attr('x',0).attr('dy','1.15em').text(words.slice(mid).join(' '));
+    }
+  });
+
+  nEnter.transition().duration(400).attr('opacity',1);
+
+  simulation.nodes(nodes);
+  simulation.force('link').links(links);
+  simulation.alpha(0.5).restart();
+}
+
+function updateRings() {
+  nodeGroup.selectAll('.nr').transition().duration(300)
+    .attr('opacity', d => ONTOLOGY[d.id]?.children && !expandedNodes.has(d.id) ? 0.5 : 0);
+}
+
+// Tick
+simulation.on('tick', () => {
+  linkGroup.selectAll('line')
+    .attr('x1',d=>d.source.x).attr('y1',d=>d.source.y)
+    .attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+  if (!isMobile) {
+    linkLabelGroup.selectAll('text')
+      .attr('x',d=>(d.source.x+d.target.x)/2)
+      .attr('y',d=>(d.source.y+d.target.y)/2 - 5);
+  }
+  nodeGroup.selectAll('.ng').attr('transform', d => `translate(${d.x},${d.y})`);
+});
+
+// Drag
+function ds(e,d) { if(!e.active) simulation.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; }
+function dd(e,d) { d.fx=e.x; d.fy=e.y; }
+function de(e,d) { if(!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }
+
+// ── Node click ──
+function handleNodeClick(d) {
+  // Dismiss keyboard
+  document.getElementById('searchInput').blur();
+
+  const hasChildren = ONTOLOGY[d.id]?.children?.length > 0;
+  if (hasChildren) {
+    if (expandedNodes.has(d.id)) collapseNode(d.id);
+    else expandNode(d.id);
+    update();
+    updateRings();
+  }
+  showSheet(d);
+
+  // Gentle pan to node
+  const scale = d3.zoomTransform(svg.node()).k || 0.85;
+  svg.transition().duration(500).call(
+    zoom.transform,
+    d3.zoomIdentity.translate(W/2 - d.x*scale, H * (isMobile ? 0.3 : 0.5) - d.y*scale).scale(scale)
+  );
+}
+
+// ── Bottom Sheet ──
+function showSheet(d) {
+  activeNode = d;
+  const nd = ONTOLOGY[d.id] || {};
+  const color = getNodeColor(d);
+
+  document.getElementById('sheetHeader').innerHTML = `
+    <div class="sheet-category" style="color:${color}">${CATEGORIES[d.cat]?.label||d.cat}</div>
+    <div class="sheet-title">${d.label||d.id}</div>
+  `;
+
+  let body = `<div class="sheet-desc">${nd.desc||''}</div>`;
+
+  if (nd.children?.length) {
+    body += `<div class="sheet-section-label">Subclasses / Components</div><div class="sheet-rel-list">`;
+    nd.children.forEach(cid => {
+      const c = ONTOLOGY[cid]; const cc = CATEGORIES[c?.cat]?.color || '#888';
+      body += `<div class="sheet-rel-item" onclick="navigateTo('${cid}')">
+        <div class="sheet-rel-dot" style="background:${cc}"></div>
+        <span class="sheet-rel-name">${c?.label||cid}</span>
+        <span class="sheet-rel-type">subclass</span>
+      </div>`;
+    });
+    body += `</div>`;
+  }
+
+  const rels = CROSS_LINKS.filter(cl => cl.source===d.id || cl.target===d.id);
+  if (rels.length) {
+    body += `<div class="sheet-section-label">Relationships</div><div class="sheet-rel-list">`;
+    rels.forEach(cl => {
+      const oid = cl.source===d.id ? cl.target : cl.source;
+      const o = ONTOLOGY[oid]; const oc = CATEGORIES[o?.cat]?.color || '#888';
+      body += `<div class="sheet-rel-item" onclick="navigateTo('${oid}')">
+        <div class="sheet-rel-dot" style="background:${oc}"></div>
+        <span class="sheet-rel-name">${o?.label||oid}</span>
+        <span class="sheet-rel-type">${cl.label}</span>
+      </div>`;
+    });
+    body += `</div>`;
+  }
+
+  const parents = Object.entries(ONTOLOGY).filter(([k,v]) => v.children?.includes(d.id));
+  if (parents.length) {
+    body += `<div class="sheet-section-label">Parent Concept</div><div class="sheet-rel-list">`;
+    parents.forEach(([pid,pd]) => {
+      const pc = CATEGORIES[pd.cat]?.color || '#888';
+      body += `<div class="sheet-rel-item" onclick="navigateTo('${pid}')">
+        <div class="sheet-rel-dot" style="background:${pc}"></div>
+        <span class="sheet-rel-name">${pd.label||pid}</span>
+        <span class="sheet-rel-type">parent</span>
+      </div>`;
+    });
+    body += `</div>`;
+  }
+
+  document.getElementById('sheetBody').innerHTML = body;
+  document.getElementById('bottomSheet').classList.add('visible');
+  document.getElementById('sheetOverlay').classList.add('visible');
+  document.getElementById('legend').classList.add('hidden');
+}
+
+function closeSheet() {
+  document.getElementById('bottomSheet').classList.remove('visible');
+  document.getElementById('sheetOverlay').classList.remove('visible');
+  document.getElementById('legend').classList.remove('hidden');
+  activeNode = null;
+}
+
+function navigateTo(nodeId) {
+  closeSheet();
+  ensureVisible(nodeId);
+  update();
+  updateRings();
+  setTimeout(() => {
+    const node = nodes.find(n => n.id === nodeId);
+    if (node) {
+      showSheet(node);
+      const scale = d3.zoomTransform(svg.node()).k || 0.85;
+      svg.transition().duration(500).call(
+        zoom.transform,
+        d3.zoomIdentity.translate(W/2 - node.x*scale, H*(isMobile?0.3:0.5) - node.y*scale).scale(scale)
+      );
+    }
+  }, 150);
+}
+
+function ensureVisible(target) {
+  function findPath(t, cur, path) {
+    if (cur === t) return [...path, cur];
+    const d = ONTOLOGY[cur];
+    if (!d?.children) return null;
+    for (const c of d.children) { const r = findPath(t, c, [...path, cur]); if (r) return r; }
+    return null;
+  }
+  const path = findPath(target, 'Implementation Science', []);
+  if (path) path.forEach(id => { if (ONTOLOGY[id]?.children && !expandedNodes.has(id)) expandNode(id); });
+}
+
+function searchNodes(query) {
+  if (!query) { nodeGroup.selectAll('.ng').transition().duration(200).attr('opacity',1); return; }
+  const q = query.toLowerCase();
+  nodeGroup.selectAll('.ng').transition().duration(200)
+    .attr('opacity', d => {
+      const name = (d.label||d.id).toLowerCase();
+      const desc = (ONTOLOGY[d.id]?.desc||'').toLowerCase();
+      return (name.includes(q) || desc.includes(q)) ? 1 : 0.08;
+    });
+}
+
+function resetView() {
+  closeSheet();
+  nodes = []; links = []; expandedNodes.clear();
+  linkGroup.selectAll('*').remove();
+  linkLabelGroup.selectAll('*').remove();
+  nodeGroup.selectAll('*').remove();
+  initGraph();
+}
+
+function expandAll() {
+  let changed = true;
+  while (changed) { changed = false; nodes.forEach(n => { if (ONTOLOGY[n.id]?.children && !expandedNodes.has(n.id)) { expandNode(n.id); changed = true; } }); }
+  update(); updateRings();
+  svg.transition().duration(600).call(
+    zoom.transform,
+    d3.zoomIdentity.translate(W/2,H/2).scale(isMobile ? 0.2 : 0.35).translate(-W/2,-H/2)
+  );
+}
+
+// ── Swipe to close sheet ──
+let touchStartY = 0;
+document.getElementById('bottomSheet').addEventListener('touchstart', e => {
+  touchStartY = e.touches[0].clientY;
+}, { passive: true });
+document.getElementById('bottomSheet').addEventListener('touchmove', e => {
+  const dy = e.touches[0].clientY - touchStartY;
+  if (dy > 80) closeSheet();
+}, { passive: true });
+
+// ── SVG click to close ──
+svg.on('click', () => { if (activeNode) closeSheet(); });
+
+// ── Resize ──
+window.addEventListener('resize', () => {
+  W = window.innerWidth; H = window.innerHeight;
+  svg.attr('viewBox', [0, 0, W, H]);
+  svg.select('rect').attr('width', W).attr('height', H);
+  simulation.force('center', d3.forceCenter(W/2, H/2));
+  simulation.force('x', d3.forceX(W/2).strength(0.02));
+  simulation.force('y', d3.forceY(H/2).strength(0.02));
+  simulation.alpha(0.3).restart();
+});
+
+// ── Legend ──
+function buildLegend() {
+  const el = document.getElementById('legend');
+  Object.entries(CATEGORIES).forEach(([k, v]) => {
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `<div class="legend-dot" style="background:${v.color}"></div>${v.label}`;
+    el.appendChild(item);
+  });
+}
+
+// ── Init ──
+function initGraph() {
+  const rootId = 'Implementation Science';
+  nodes = [{ id: rootId, ...ONTOLOGY[rootId], depth: 0 }];
+  links = [];
+  expandedNodes.clear();
+  expandNode(rootId);
+  update();
+  setTimeout(() => {
+    const s = isMobile ? 0.7 : 0.85;
+    svg.transition().duration(600).call(
+      zoom.transform,
+      d3.zoomIdentity.translate(W/2,H/2).scale(s).translate(-W/2,-H/2)
+    );
+  }, 400);
+}
+
+buildLegend();
+initGraph();
+</script>
+</body>
+</html>
